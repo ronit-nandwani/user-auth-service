@@ -71,4 +71,18 @@ public class AuthService implements IAuthService {
         return tokenRepository.save(token);
     }
 
+    @Override
+    public User validateToken(String tokenValue) {
+
+        Optional<Token> optionalToken = tokenRepository.
+                findByValueAndExpiresAtAfter(tokenValue, new Date());
+
+        if (optionalToken.isEmpty()) {
+            //Token is not valid or expired
+            return null;
+        }
+
+        return optionalToken.get().getUser();
+    }
+
 }
