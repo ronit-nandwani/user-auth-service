@@ -1,7 +1,10 @@
 package org.example.userauthservice.services;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.antlr.v4.runtime.misc.Pair;
 import org.apache.commons.lang3.RandomStringUtils;
+import org.example.userauthservice.dtos.SendEmailEventDto;
 import org.example.userauthservice.dtos.SignUpRequestDto;
 import org.example.userauthservice.dtos.UserDto;
 import org.example.userauthservice.exceptions.PasswordMismatchException;
@@ -12,6 +15,7 @@ import org.example.userauthservice.models.User;
 import org.example.userauthservice.repos.TokenRepository;
 import org.example.userauthservice.repos.UserRepo;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -31,7 +35,13 @@ public class AuthService implements IAuthService {
     @Autowired
     private TokenRepository tokenRepository;
 
-    public User signup(String name, String email, String password, String phoneNumber) {
+    @Autowired
+    private KafkaTemplate<String, String> kafkaTemplate;
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    public User signup(String name, String email, String password, String phoneNumber) throws JsonProcessingException {
         Optional<User> userOptional = userRepo.findByEmailEquals(email);
 
         if (userOptional.isPresent()) {
@@ -43,7 +53,21 @@ public class AuthService implements IAuthService {
         user.setEmail(email);
         user.setPassword(bCryptPasswordEncoder.encode(password));
         user.setPhoneNumber(phoneNumber);
-        return userRepo.save(user);
+        user = userRepo.save(user);
+
+        //Produce a message to Kafka topic to send a welcome email.
+        SendEmailEventDto emailEventDto = new SendEmailEventDto();
+        emailEventDto.setSubject("Welcome to Scaler!");
+        emailEventDto.setBody("Welcome aboard");
+        emailEventDto.setToEmail(email);
+
+        kafkaTemplate.send(
+                "sendEmailEvent",
+                objectMapper.writeValueAsString(emailEventDto)
+        );
+
+        return user;
+
     }
 
     public Token login(String email, String password) {
